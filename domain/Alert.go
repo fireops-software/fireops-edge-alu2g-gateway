@@ -1,5 +1,6 @@
 package domain
 
+type AlertId string
 type Alert struct {
 	Origin        Origin          `json:"origin"`
 	ReceiveTad    string          `json:"receiveTad"`

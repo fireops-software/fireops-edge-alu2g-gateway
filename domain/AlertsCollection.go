@@ -1,5 +1,5 @@
 package domain
 
 type AlertCollection struct {
-	Alerts map[string]Alert `json:"alerts"`
+	Alerts map[AlertId]Alert `json:"alerts"`
 }

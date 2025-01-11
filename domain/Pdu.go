@@ -85,7 +85,7 @@ func CreateAlertCollection(data []byte) (*AlertCollection, error) {
 	}
 	ac := &AlertCollection{}
 	for _, order := range pdu.OrderList.Order {
-		ac.Alerts[order.OperationId] = Alert{
+		ac.Alerts[AlertId(order.OperationId)] = Alert{
 			Origin: Origin{
 				Tid:  order.Origin.Tid,
 				Name: order.Origin.Name,
@@ -103,7 +103,7 @@ func CreateAlertCollection(data []byte) (*AlertCollection, error) {
 			Destinations: make(map[uint]string),
 		}
 		for _, destination := range order.DestinationList.Destination {
-			ac.Alerts[order.OperationId].Destinations[destination.Id] = destination.Name
+			ac.Alerts[AlertId(order.OperationId)].Destinations[destination.Id] = destination.Name
 		}
 	}
 	return ac, nil

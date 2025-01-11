@@ -22,11 +22,10 @@ type Alu2gClient struct {
 	interval time.Duration
 	logger   log.ILogger
 
-	tcpTimeout           time.Duration
-	subscriberBufferSize uint
-	tcpBufferSize        int
-	stop                 chan bool
-	subscriptions        map[async.Stream[domain.AlertCollection]]bool
+	tcpTimeout    time.Duration
+	tcpBufferSize int
+	stop          chan bool
+	subscriptions map[async.Stream[domain.AlertCollection]]bool
 }
 
 //-----------------------------------------------------------------------------------
@@ -40,14 +39,15 @@ func (a *Alu2gClient) Close() error {
 }
 
 // Subscribe implements INotificationService.
-func (a *Alu2gClient) Subscribe() async.Stream[domain.AlertCollection] {
-	c := async.NewBufferedStream[domain.AlertCollection](a.subscriberBufferSize)
+func (a *Alu2gClient) Subscribe(chBufferSize uint) async.Stream[domain.AlertCollection] {
+	c := async.NewBufferedStream[domain.AlertCollection](chBufferSize)
 	a.subscriptions[c] = true
 	return c
 }
 
 // Unsubscribe implements INotificationService.
 func (a *Alu2gClient) Unsubscribe(client async.Stream[domain.AlertCollection]) {
+	close(client)
 	delete(a.subscriptions, client)
 }
 
@@ -159,11 +159,10 @@ func NewAlu2gClient(host string, port uint16, logger log.ILogger, interval time.
 		interval: interval,
 		logger:   logger,
 
-		tcpBufferSize:        1024,
-		tcpTimeout:           time.Duration(5) * time.Second,
-		subscriberBufferSize: 0,
-		stop:                 make(chan bool),
-		subscriptions:        map[async.Stream[domain.AlertCollection]]bool{},
+		tcpBufferSize: 1024,
+		tcpTimeout:    time.Duration(5) * time.Second,
+		stop:          make(chan bool),
+		subscriptions: map[async.Stream[domain.AlertCollection]]bool{},
 	}
 	// Apply options
 	for _, o := range opts {
@@ -175,12 +174,6 @@ func NewAlu2gClient(host string, port uint16, logger log.ILogger, interval time.
 // -----------------------------------------------------------------------------------
 // Options
 // -----------------------------------------------------------------------------------
-func WithAlu2gSubscriberBufferSize(size uint) func(*Alu2gClient) {
-	return func(ac *Alu2gClient) {
-		ac.subscriberBufferSize = size
-	}
-}
-
 func WithAlu2gTcpTimeOut(timeout time.Duration) func(*Alu2gClient) {
 	return func(ac *Alu2gClient) {
 		ac.tcpTimeout = timeout
