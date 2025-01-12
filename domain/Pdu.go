@@ -83,7 +83,9 @@ func CreateAlertCollection(data []byte) (*AlertCollection, error) {
 	if err != nil {
 		return nil, appError.NewErrInvalidData("failed to parse data to pdu - %v", err)
 	}
-	ac := &AlertCollection{}
+	ac := &AlertCollection{
+		Alerts: map[AlertId]Alert{},
+	}
 	for _, order := range pdu.OrderList.Order {
 		ac.Alerts[AlertId(order.OperationId)] = Alert{
 			Origin: Origin{

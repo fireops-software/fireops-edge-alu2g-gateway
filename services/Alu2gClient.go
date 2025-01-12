@@ -53,12 +53,16 @@ func (a *Alu2gClient) Unsubscribe(client async.Stream[domain.AlertCollection]) {
 
 // Run implements INotificationService.
 func (a *Alu2gClient) Run() {
+	// Create ticker for polling
+	ticker := time.NewTicker(a.interval)
+
+	// Run
 LP1:
 	for {
 		select {
 		case <-a.stop:
 			break LP1
-		default:
+		case <-ticker.C:
 			a.pollAlu2g()
 		}
 	}
@@ -68,30 +72,30 @@ LP1:
 // Private
 // -----------------------------------------------------------------------------------
 func (a *Alu2gClient) getDataFromAlu2g() ([]byte, error) {
-	// Resolve tcp address
-	tcpAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", a.host, a.port))
-	if err != nil {
-		return nil, appError.NewErrTcpConnect("failed to resolve tcp address for host: %s and port: %d - %v", a.host, a.port, err)
-	}
 	// Connect to Alu2g
-	conn, err := net.DialTCP("tcp", nil, tcpAddr)
+	addr := fmt.Sprintf("%s:%d", a.host, a.port)
+	conn, err := net.DialTimeout("tcp", addr, a.tcpTimeout)
 	if err != nil {
-		return nil, appError.NewErrTcpConnect("failed to connect to alu2g (%s) - %v", tcpAddr.String(), err)
+		return nil, appError.NewErrTcpConnect("failed to connect to alu2g (%s) - %v", addr, err)
 	}
 	defer func() {
 		conn.Close()
-		a.logger.Tracef("closed connection to Alu2g (%s)", tcpAddr.String())
+		a.logger.Tracef("closed connection to Alu2g (%s)", addr)
 	}()
-	a.logger.Tracef("successfully connected to Alu2g (%s)", tcpAddr.String())
+	a.logger.Tracef("successfully connected to Alu2g (%s)", addr)
 
 	// Set timeout
-	conn.SetDeadline(time.Now().Add(a.tcpTimeout))
+	err = conn.SetDeadline(time.Now().Add(a.tcpTimeout))
+	if err != nil {
+		return nil, appError.NewErrTcpConnect("failed to set deadline for connection to Alu2g (%s) - %v", addr, err)
+	}
 
 	// Send Request
-	_, err = conn.Write([]byte("GET"))
+	_, err = conn.Write([]byte("GET\n"))
 	if err != nil {
-		return nil, appError.NewErrAlu2g("failed to write request to Alu2g (%s) - %v", tcpAddr.String(), err)
+		return nil, appError.NewErrAlu2g("failed to write request to Alu2g (%s) - %v", addr, err)
 	}
+	a.logger.Tracef("request for alert data has been sent to Alu2g (%s)", addr)
 
 	// Wait for Response
 	data := []byte{}
@@ -104,7 +108,7 @@ func (a *Alu2gClient) getDataFromAlu2g() ([]byte, error) {
 				break
 			}
 			// Return other errors
-			return nil, appError.NewErrAlu2g("failed to resolve response from Alu2g (%s) - %v", tcpAddr.String(), err)
+			return nil, appError.NewErrAlu2g("failed to resolve response from Alu2g (%s) - %v", addr, err)
 		}
 		data = append(data, buffer[:n]...)
 		if n < a.tcpBufferSize {
@@ -112,9 +116,10 @@ func (a *Alu2gClient) getDataFromAlu2g() ([]byte, error) {
 			break
 		}
 	}
+	a.logger.Tracef("received response from Alu2g (%s): %s (%d bytes)", addr, string(data), len(data))
 
 	// Return result
-	return data, nil
+	return []byte(data), nil
 }
 
 func (a *Alu2gClient) notify(msg async.ActionResult[domain.AlertCollection]) {
@@ -124,7 +129,6 @@ func (a *Alu2gClient) notify(msg async.ActionResult[domain.AlertCollection]) {
 }
 
 func (a *Alu2gClient) pollAlu2g() {
-	defer time.Sleep(a.interval)
 	// Get data from Alu2g
 	data, err := a.getDataFromAlu2g()
 	if err != nil {
@@ -132,6 +136,7 @@ func (a *Alu2gClient) pollAlu2g() {
 		a.notify(
 			async.NewErrorActionResult[domain.AlertCollection](err),
 		)
+		return
 	}
 	// Parse data
 	alerts, err := domain.CreateAlertCollection(data)
@@ -140,6 +145,7 @@ func (a *Alu2gClient) pollAlu2g() {
 		a.notify(
 			async.NewErrorActionResult[domain.AlertCollection](err),
 		)
+		return
 	}
 	// Notify clients
 	a.notify(async.ActionResult[domain.AlertCollection]{

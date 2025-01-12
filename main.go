@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	SHUTDOWN_TIMEOUT = time.Duration(5) * time.Second
+	SHUTDOWN_TIMEOUT = time.Duration(10) * time.Second
 )
 
 func main() {

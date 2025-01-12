@@ -50,16 +50,19 @@ LP1:
 			break LP1
 		case alerts := <-src:
 			if alerts.Error == nil {
+				a.logger.Tracef("incomming data on AlertManager: %v", alerts.Result)
 				// Check for changes
 				checksum, err := createCrc32(alerts.Result)
 				if err != nil {
 					a.logger.Errorf("failed to create checksum for incomming alerts - %v", err)
 				}
 				if checksum != a.backupChecksum || err != nil {
+					a.backupChecksum = checksum
 					err := a.activeAlertsPublisher.Publish(&alerts.Result)
 					if err != nil {
 						a.logger.Errorf(err.Error())
 					}
+					a.logger.Infof("published currently active alerts, because data has changed: %v", alerts.Result)
 				}
 				// Check new alerts
 				newAlerts := a.getNewAlerts(alerts.Result)
@@ -68,6 +71,7 @@ LP1:
 					if err != nil {
 						a.logger.Errorf(err.Error())
 					}
+					a.logger.Infof("published new alerts: %v", newAlerts)
 				}
 			}
 		}
@@ -78,7 +82,9 @@ LP1:
 // Private
 // -----------------------------------------------------------------------------------
 func (a *AlertManager) getNewAlerts(alertCollection domain.AlertCollection) domain.AlertCollection {
-	newAlerts := domain.AlertCollection{}
+	newAlerts := domain.AlertCollection{
+		Alerts: map[domain.AlertId]domain.Alert{},
+	}
 	for alertId, alert := range alertCollection.Alerts {
 		if !a.alertHistory.Contains(alertId) {
 			newAlerts.Alerts[alertId] = alert

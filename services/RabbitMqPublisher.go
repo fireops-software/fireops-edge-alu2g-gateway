@@ -40,16 +40,19 @@ func (r *RabbitMqPublisher[T]) Close() error {
 
 // Run implements IService.
 func (r *RabbitMqPublisher[T]) Run() {
+LP1:
 	for {
-		err := r.execService()
-		// Retry on error
-		if err != nil {
-			r.logger.Error(err.Error())
-			time.Sleep(r.retryInterval)
-			continue
+		select {
+		case <-r.stop:
+			break LP1
+		default:
+			err := r.execService()
+			// Retry on error
+			if err != nil {
+				r.logger.Error(err.Error())
+				time.Sleep(r.retryInterval)
+			}
 		}
-		// If no error -> successfully closed
-		break
 	}
 }
 
@@ -96,11 +99,16 @@ func (r *RabbitMqPublisher[T]) execService() error {
 		return appError.NewErrRabbitMq("failed to declare exchange on rabbitmq (%s) - %v", conn.RemoteAddr().String(), err)
 	}
 
-	// Run service
+	// Listen on close event
+	closeChan := conn.NotifyClose(make(chan *amqp.Error))
+
+	r.logger.Infof("successfully connected to rabbitmq (%s) and declared exchange %s", conn.RemoteAddr().String(), r.exchange)
 	for {
 		select {
 		case <-r.stop:
 			return nil
+		case err := <-closeChan:
+			return appError.NewErrRabbitMq("rabbitmq connection has been closed - %v", err)
 		case msg := <-r.internalMsgChan:
 			err := ch.Publish(
 				r.exchange,
@@ -115,6 +123,7 @@ func (r *RabbitMqPublisher[T]) execService() error {
 			if err != nil {
 				return appError.NewErrRabbitMq("failed to publish alerts to rabbitmq (%s) on exchange %s - %v", conn.RemoteAddr().String(), r.exchange, err)
 			}
+			r.logger.Tracef("message (%s) has been successfully sent to rabbitMq (%s) on exchange %s", string(msg), conn.RemoteAddr().String(), r.exchange)
 		}
 	}
 }
