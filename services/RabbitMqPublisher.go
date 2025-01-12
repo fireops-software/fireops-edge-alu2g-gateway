@@ -123,7 +123,7 @@ func (r *RabbitMqPublisher[T]) execService() error {
 			if err != nil {
 				return appError.NewErrRabbitMq("failed to publish alerts to rabbitmq (%s) on exchange %s - %v", conn.RemoteAddr().String(), r.exchange, err)
 			}
-			r.logger.Tracef("message (%s) has been successfully sent to rabbitMq (%s) on exchange %s", string(msg), conn.RemoteAddr().String(), r.exchange)
+			r.logger.Infof("message has been successfully sent to rabbitMq (%s) on exchange %s: %s", conn.RemoteAddr().String(), r.exchange, string(msg))
 		}
 	}
 }

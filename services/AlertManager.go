@@ -62,7 +62,6 @@ LP1:
 					if err != nil {
 						a.logger.Errorf(err.Error())
 					}
-					a.logger.Infof("published currently active alerts, because data has changed: %v", alerts.Result)
 				}
 				// Check new alerts
 				newAlerts := a.getNewAlerts(alerts.Result)
@@ -71,7 +70,6 @@ LP1:
 					if err != nil {
 						a.logger.Errorf(err.Error())
 					}
-					a.logger.Infof("published new alerts: %v", newAlerts)
 				}
 			}
 		}
