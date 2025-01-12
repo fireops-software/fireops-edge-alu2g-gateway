@@ -1,8 +1,8 @@
 package services
 
 import (
+	"bytes"
 	"fmt"
-	"io"
 	"net"
 	"time"
 
@@ -53,17 +53,15 @@ func (a *Alu2gClient) Unsubscribe(client async.Stream[domain.AlertCollection]) {
 
 // Run implements INotificationService.
 func (a *Alu2gClient) Run() {
-	// Create ticker for polling
-	ticker := time.NewTicker(a.interval)
-
 	// Run
 LP1:
 	for {
 		select {
 		case <-a.stop:
 			break LP1
-		case <-ticker.C:
+		default:
 			a.pollAlu2g()
+			time.Sleep(a.interval)
 		}
 	}
 }
@@ -103,15 +101,10 @@ func (a *Alu2gClient) getDataFromAlu2g() ([]byte, error) {
 		buffer := make([]byte, a.tcpBufferSize)
 		n, err := conn.Read(buffer)
 		if err != nil {
-			// Connection closed
-			if err != io.EOF {
-				break
-			}
-			// Return other errors
 			return nil, appError.NewErrAlu2g("failed to resolve response from Alu2g (%s) - %v", addr, err)
 		}
 		data = append(data, buffer[:n]...)
-		if n < a.tcpBufferSize {
+		if bytes.Contains(data, []byte("</pdu>")) {
 			// completed response
 			break
 		}
@@ -166,7 +159,7 @@ func NewAlu2gClient(host string, port uint16, logger log.ILogger, interval time.
 		logger:   logger,
 
 		tcpBufferSize: 1024,
-		tcpTimeout:    time.Duration(5) * time.Second,
+		tcpTimeout:    time.Duration(30) * time.Second,
 		stop:          make(chan bool),
 		subscriptions: map[async.Stream[domain.AlertCollection]]bool{},
 	}
