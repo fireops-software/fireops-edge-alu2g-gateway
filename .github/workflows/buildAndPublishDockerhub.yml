@@ -28,7 +28,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: fireops/fireops-edge-dashboard:${{ vars.VERSION }}
+          tags: fireops/fireops-edge-alu2g-gateway:${{ vars.VERSION }}
       
       - name: Create git tag
         run: |
