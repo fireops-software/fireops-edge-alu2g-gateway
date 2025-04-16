@@ -8,6 +8,7 @@ import (
 
 	"github.com/fireops-software/fireops-edge-alu2g-gateway/domain"
 	"github.com/uoul/go-common/async"
+	"github.com/uoul/go-common/health"
 	"github.com/uoul/go-common/log"
 
 	appError "github.com/fireops-software/fireops-edge-alu2g-gateway/error"
@@ -22,10 +23,11 @@ type Alu2gClient struct {
 	interval time.Duration
 	logger   log.ILogger
 
-	tcpTimeout    time.Duration
-	tcpBufferSize int
-	stop          chan bool
-	subscriptions map[async.Stream[domain.AlertCollection]]bool
+	tcpTimeout             time.Duration
+	tcpBufferSize          int
+	stop                   chan bool
+	subscriptions          map[async.Stream[domain.AlertCollection]]bool
+	lastSuccessfullRequest time.Time
 }
 
 //-----------------------------------------------------------------------------------
@@ -131,6 +133,8 @@ func (a *Alu2gClient) pollAlu2g() {
 		)
 		return
 	}
+	// Store successfull request
+	a.lastSuccessfullRequest = time.Now()
 	// Parse data
 	alerts, err := domain.CreateAlertCollection(data)
 	if err != nil {
@@ -158,15 +162,24 @@ func NewAlu2gClient(host string, port uint16, logger log.ILogger, interval time.
 		interval: interval,
 		logger:   logger,
 
-		tcpBufferSize: 1024,
-		tcpTimeout:    time.Duration(30) * time.Second,
-		stop:          make(chan bool),
-		subscriptions: map[async.Stream[domain.AlertCollection]]bool{},
+		tcpBufferSize:          1024,
+		tcpTimeout:             time.Duration(30) * time.Second,
+		stop:                   make(chan bool),
+		subscriptions:          map[async.Stream[domain.AlertCollection]]bool{},
+		lastSuccessfullRequest: time.Now(),
 	}
 	// Apply options
 	for _, o := range opts {
 		o(r)
 	}
+	// Register readyness check
+	health.GetHealthMonitor().RegisterReadynessCheck("check alu2g connection", func() error {
+		if time.Since(r.lastSuccessfullRequest) > 2*r.interval {
+			return appError.NewErrAlu2g("alu2g connection not ready")
+		}
+		return nil
+	})
+	// Return Alu2gClient
 	return r
 }
 

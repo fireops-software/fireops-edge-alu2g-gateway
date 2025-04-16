@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fireops-software/fireops-edge-alu2g-gateway/domain"
 	"github.com/uoul/go-common/log"
 
 	appError "github.com/fireops-software/fireops-edge-alu2g-gateway/error"
@@ -15,17 +14,21 @@ import (
 // -----------------------------------------------------------------------------------
 // Type
 // -----------------------------------------------------------------------------------
-type RabbitMqPublisher[T any] struct {
+type RabbitMqPublisher struct {
 	logger   log.ILogger
 	host     string
 	port     uint16
 	user     string
 	password string
-	exchange string
 
 	stop            chan bool
 	retryInterval   time.Duration
-	internalMsgChan chan []byte
+	internalMsgChan chan internalMsg
+}
+
+type internalMsg struct {
+	exchange string
+	data     []byte
 }
 
 //-----------------------------------------------------------------------------------
@@ -33,13 +36,13 @@ type RabbitMqPublisher[T any] struct {
 //-----------------------------------------------------------------------------------
 
 // Close implements IService.
-func (r *RabbitMqPublisher[T]) Close() error {
+func (r *RabbitMqPublisher) Close() error {
 	r.stop <- true
 	return nil
 }
 
 // Run implements IService.
-func (r *RabbitMqPublisher[T]) Run() {
+func (r *RabbitMqPublisher) Run() {
 LP1:
 	for {
 		select {
@@ -57,12 +60,15 @@ LP1:
 }
 
 // Publish implements IPublishService.
-func (r *RabbitMqPublisher[T]) Publish(item *domain.AlertCollection) error {
+func (r *RabbitMqPublisher) Publish(exchange string, item any) error {
 	data, err := json.Marshal(item)
 	if err != nil {
 		return appError.NewErrInvalidData("failed to parse data to json string - %v", err)
 	}
-	r.internalMsgChan <- data
+	r.internalMsgChan <- internalMsg{
+		exchange: exchange,
+		data:     data,
+	}
 	return nil
 }
 
@@ -70,7 +76,7 @@ func (r *RabbitMqPublisher[T]) Publish(item *domain.AlertCollection) error {
 // Private
 // -----------------------------------------------------------------------------------
 
-func (r *RabbitMqPublisher[T]) execService() error {
+func (r *RabbitMqPublisher) execService() error {
 	// Create rabbitmq connection
 	conn, err := amqp.Dial(fmt.Sprintf("amqp://%s:%s@%s:%d", r.user, r.password, r.host, r.port))
 	if err != nil {
@@ -85,24 +91,10 @@ func (r *RabbitMqPublisher[T]) execService() error {
 	}
 	defer ch.Close()
 
-	// Create exchange
-	err = ch.ExchangeDeclare(
-		r.exchange, // name
-		"fanout",   // type
-		true,       // durable
-		false,      // auto-deleted
-		false,      // internal
-		false,      // no-wait
-		nil,        // arguments
-	)
-	if err != nil {
-		return appError.NewErrRabbitMq("failed to declare exchange on rabbitmq (%s) - %v", conn.RemoteAddr().String(), err)
-	}
-
 	// Listen on close event
 	closeChan := conn.NotifyClose(make(chan *amqp.Error))
 
-	r.logger.Infof("successfully connected to rabbitmq (%s) and declared exchange %s", conn.RemoteAddr().String(), r.exchange)
+	r.logger.Infof("successfully connected to rabbitmq (%s)", conn.RemoteAddr().String())
 	for {
 		select {
 		case <-r.stop:
@@ -110,20 +102,33 @@ func (r *RabbitMqPublisher[T]) execService() error {
 		case err := <-closeChan:
 			return appError.NewErrRabbitMq("rabbitmq connection has been closed - %v", err)
 		case msg := <-r.internalMsgChan:
+			// Check exchange
+			err = ch.ExchangeDeclare(
+				msg.exchange, // name
+				"fanout",     // type
+				true,         // durable
+				false,        // auto-deleted
+				false,        // internal
+				false,        // no-wait
+				nil,          // arguments
+			)
+			if err != nil {
+				return appError.NewErrRabbitMq("failed to declare exchange(%s) on rabbitmq (%s) - %v", msg.exchange, conn.RemoteAddr().String(), err)
+			}
 			err := ch.Publish(
-				r.exchange,
+				msg.exchange,
 				"",
 				false,
 				false,
 				amqp.Publishing{
 					ContentType: "text/plain",
-					Body:        msg,
+					Body:        msg.data,
 				},
 			)
 			if err != nil {
-				return appError.NewErrRabbitMq("failed to publish alerts to rabbitmq (%s) on exchange %s - %v", conn.RemoteAddr().String(), r.exchange, err)
+				return appError.NewErrRabbitMq("failed to publish alerts to rabbitmq (%s) on exchange %s - %v", conn.RemoteAddr().String(), msg.exchange, err)
 			}
-			r.logger.Infof("message has been successfully sent to rabbitMq (%s) on exchange %s: %s", conn.RemoteAddr().String(), r.exchange, string(msg))
+			r.logger.Tracef("message has been successfully sent to rabbitMq (%s) on exchange %s: %s", conn.RemoteAddr().String(), msg.exchange, string(msg.data))
 		}
 	}
 }
@@ -132,25 +137,23 @@ func (r *RabbitMqPublisher[T]) execService() error {
 // Constructor
 // -----------------------------------------------------------------------------------
 
-func NewRabbitMqPublisher[T any](
+func NewRabbitMqPublisher(
 	logger log.ILogger,
 	host string,
 	port uint16,
 	user string,
 	password string,
-	exchange string,
-) IPublishService[domain.AlertCollection] {
-	return &RabbitMqPublisher[T]{
+) IPublishService {
+	return &RabbitMqPublisher{
 		logger:   logger,
 		host:     host,
 		port:     port,
 		user:     user,
 		password: password,
-		exchange: exchange,
 
 		retryInterval: 10 * time.Second,
 
-		internalMsgChan: make(chan []byte),
+		internalMsgChan: make(chan internalMsg),
 		stop:            make(chan bool),
 	}
 }
@@ -158,8 +161,8 @@ func NewRabbitMqPublisher[T any](
 // -----------------------------------------------------------------------------------
 // Options
 // -----------------------------------------------------------------------------------
-func WithRabbitMqPublisherRetryInterval[T any](interval time.Duration) func(*RabbitMqPublisher[T]) {
-	return func(rmp *RabbitMqPublisher[T]) {
+func WithRabbitMqPublisherRetryInterval(interval time.Duration) func(*RabbitMqPublisher) {
+	return func(rmp *RabbitMqPublisher) {
 		rmp.retryInterval = interval
 	}
 }

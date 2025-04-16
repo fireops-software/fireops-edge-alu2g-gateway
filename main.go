@@ -3,7 +3,6 @@ package main
 import (
 	"time"
 
-	"github.com/fireops-software/fireops-edge-alu2g-gateway/domain"
 	"github.com/fireops-software/fireops-edge-alu2g-gateway/services"
 	"github.com/uoul/go-common/config"
 	"github.com/uoul/go-common/log"
@@ -12,6 +11,7 @@ import (
 
 const (
 	VERSION          = "{VERSION}"
+	SERVICE_NAME     = "fireops-edge-alu2g-gateway"
 	SHUTDOWN_TIMEOUT = time.Duration(20) * time.Second
 )
 
@@ -41,44 +41,43 @@ func main() {
 	rabbitMqUser := cp.StringOrDefault("RABBITMQ_USER", "")
 	rabbitMqPw := cp.StringOrDefault("RABBITMQ_PW", "")
 
-	activeAlertsPublisher := services.NewRabbitMqPublisher[domain.AlertCollection](
+	rabbitMqPublisher := services.NewRabbitMqPublisher(
 		logger,
 		rabbitMqHost,
 		rabbitMqPort,
 		rabbitMqUser,
 		rabbitMqPw,
-		cp.StringOrDefault("RABBITMQ_EXCHANGE_ACTIVE", "ActiveAlerts"),
-	)
-
-	newAlertsPublisher := services.NewRabbitMqPublisher[domain.AlertCollection](
-		logger,
-		rabbitMqHost,
-		rabbitMqPort,
-		rabbitMqUser,
-		rabbitMqPw,
-		cp.StringOrDefault("RABBITMQ_EXCHANGE_NEW", "NewAlerts"),
 	)
 
 	// Create AlertManager
 	alertManager := services.NewAlertManager(
 		logger,
 		alu2gClient,
-		activeAlertsPublisher,
-		newAlertsPublisher,
+		rabbitMqPublisher,
+		cp.StringOrDefault("RABBITMQ_EXCHANGE_ACTIVE", "ActiveAlerts"),
+		cp.StringOrDefault("RABBITMQ_EXCHANGE_NEW", "NewAlerts"),
+	)
+
+	// Create HealthReporter
+	healthReporter := services.NewHealthReporter(
+		logger,
+		rabbitMqPublisher,
+		cp.StringOrDefault("RABBITMQ_EXCHANGE_HEALTH", "Health"),
+		SERVICE_NAME,
 	)
 
 	// Run services
 	go alu2gClient.Run()
 	rm.Register(alu2gClient)
 
-	go activeAlertsPublisher.Run()
-	rm.Register(activeAlertsPublisher)
-
-	go newAlertsPublisher.Run()
-	rm.Register(newAlertsPublisher)
+	go rabbitMqPublisher.Run()
+	rm.Register(rabbitMqPublisher)
 
 	go alertManager.Run()
 	rm.Register(alertManager)
+
+	go healthReporter.Run()
+	rm.Register(healthReporter)
 
 	// Wait until resources has been closed
 	rm.Wait()

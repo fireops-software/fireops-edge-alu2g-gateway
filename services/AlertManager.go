@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"encoding/gob"
+	"encoding/json"
 	"hash/crc32"
 
 	"github.com/fireops-software/fireops-edge-alu2g-gateway/domain"
@@ -14,12 +15,12 @@ import (
 // Type
 // -----------------------------------------------------------------------------------
 type AlertManager struct {
-	logger                log.ILogger
-	alertSrc              INotificationService[domain.AlertCollection]
-	activeAlertsPublisher IPublishService[domain.AlertCollection]
-	newAlertsPublisher    IPublishService[domain.AlertCollection]
-
-	alertSrcBufferSize uint
+	logger               log.ILogger
+	alertSrc             INotificationService[domain.AlertCollection]
+	rabbitMqPublisher    IPublishService
+	alertSrcBufferSize   uint
+	newAlertsExchange    string
+	activeAlertsExchange string
 
 	stop           chan bool
 	alertHistory   *buffer.RingBuffer[domain.AlertId]
@@ -58,7 +59,7 @@ LP1:
 				}
 				if checksum != a.backupChecksum || err != nil {
 					a.backupChecksum = checksum
-					err := a.activeAlertsPublisher.Publish(&alerts.Result)
+					err := a.rabbitMqPublisher.Publish(a.activeAlertsExchange, &alerts.Result)
 					if err != nil {
 						a.logger.Errorf(err.Error())
 					}
@@ -66,7 +67,8 @@ LP1:
 				// Check new alerts
 				newAlerts := a.getNewAlerts(alerts.Result)
 				if len(newAlerts.Alerts) > 0 {
-					err := a.newAlertsPublisher.Publish(&newAlerts)
+					a.logger.Infof("new alert: %v", mustJson(newAlerts))
+					err := a.rabbitMqPublisher.Publish(a.newAlertsExchange, &newAlerts)
 					if err != nil {
 						a.logger.Errorf(err.Error())
 					}
@@ -101,21 +103,28 @@ func createCrc32[T any](obj T) (uint32, error) {
 	return crc32.ChecksumIEEE(buf.Bytes()), nil
 }
 
+func mustJson(item any) string {
+	data, _ := json.Marshal(item)
+	return string(data)
+}
+
 // -----------------------------------------------------------------------------------
 // Constructor
 // -----------------------------------------------------------------------------------
 func NewAlertManager(
 	logger log.ILogger,
 	alertSrc INotificationService[domain.AlertCollection],
-	activeAlertsPublisher IPublishService[domain.AlertCollection],
-	newAlertsPublisher IPublishService[domain.AlertCollection],
+	rabbitMqPublisher IPublishService,
+	activeAlertsExchange string,
+	newAlertsExchange string,
 	opts ...func(*AlertManager),
 ) IService {
 	am := &AlertManager{
-		logger:                logger,
-		alertSrc:              alertSrc,
-		activeAlertsPublisher: activeAlertsPublisher,
-		newAlertsPublisher:    newAlertsPublisher,
+		logger:               logger,
+		alertSrc:             alertSrc,
+		rabbitMqPublisher:    rabbitMqPublisher,
+		activeAlertsExchange: activeAlertsExchange,
+		newAlertsExchange:    newAlertsExchange,
 
 		alertSrcBufferSize: 10,
 

@@ -15,7 +15,7 @@
         "RABBITMQ_HOST": "rabbitmq",
         "RABBITMQ_USER": "guest",
         "RABBITMQ_PW": "guest",
-        "ALU2G_HOST": "192.168.178.52"
+        "ALU2G_HOST": "10.0.0.66"
       }
     }
   ]

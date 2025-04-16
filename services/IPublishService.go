@@ -1,6 +1,6 @@
 package services
 
-type IPublishService[T any] interface {
+type IPublishService interface {
 	IService
-	Publish(item *T) error
+	Publish(exchange string, item any) error
 }
