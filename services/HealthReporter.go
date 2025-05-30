@@ -1,28 +1,24 @@
 package services
 
 import (
+	"context"
 	"time"
 
 	"github.com/fireops-software/fireops-edge-alu2g-gateway/domain"
+	"github.com/rabbitmq/amqp091-go"
 	"github.com/uoul/go-common/collections"
 	"github.com/uoul/go-common/health"
 	"github.com/uoul/go-common/log"
+	"github.com/uoul/go-common/messaging"
 )
 
 type HealthReporter struct {
 	logger         log.ILogger
-	publisher      IPublishService
-	healthExchange string
+	messenger      messaging.IMessenger[messaging.RabbitMqExchange, amqp091.Delivery]
+	healthExchange messaging.RabbitMqExchange
 	reportInterval time.Duration
 	serviceName    string
-
-	stop chan bool
-}
-
-// Close implements IService.
-func (h *HealthReporter) Close() error {
-	h.stop <- true
-	return nil
+	ctx            context.Context
 }
 
 // Run implements IService.
@@ -31,7 +27,7 @@ func (h *HealthReporter) Run() {
 LP1:
 	for {
 		select {
-		case <-h.stop:
+		case <-h.ctx.Done():
 			break LP1
 		case <-ticker.C:
 			// Execute Readyness checks
@@ -49,7 +45,7 @@ LP1:
 				Description: "",
 			}
 			// Publish
-			err := h.publisher.Publish(h.healthExchange, currentState)
+			err := h.messenger.Publish(h.healthExchange, currentState)
 			if err != nil {
 				h.logger.Errorf("failed to publish current health state - %v", err)
 			}
@@ -63,14 +59,14 @@ func WithHealthReporterInterval(interval time.Duration) func(*HealthReporter) {
 	}
 }
 
-func NewHealthReporter(logger log.ILogger, publisher IPublishService, healthExchange string, serviceName string, opts ...func(*HealthReporter)) IService {
+func NewHealthReporter(ctx context.Context, logger log.ILogger, messenger messaging.IMessenger[messaging.RabbitMqExchange, amqp091.Delivery], healthExchange messaging.RabbitMqExchange, serviceName string, opts ...func(*HealthReporter)) IService {
 	hr := &HealthReporter{
 		logger:         logger,
-		publisher:      publisher,
+		messenger:      messenger,
 		healthExchange: healthExchange,
 		reportInterval: 30 * time.Second,
 		serviceName:    serviceName,
-		stop:           make(chan bool),
+		ctx:            ctx,
 	}
 	for _, o := range opts {
 		o(hr)

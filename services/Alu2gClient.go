@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"time"
@@ -22,10 +23,10 @@ type Alu2gClient struct {
 	port     uint16
 	interval time.Duration
 	logger   log.ILogger
+	ctx      context.Context
 
 	tcpTimeout             time.Duration
 	tcpBufferSize          int
-	stop                   chan bool
 	subscriptions          map[async.Stream[domain.AlertCollection]]bool
 	lastSuccessfullRequest time.Time
 }
@@ -33,12 +34,6 @@ type Alu2gClient struct {
 //-----------------------------------------------------------------------------------
 // Public
 //-----------------------------------------------------------------------------------
-
-// Close implements INotificationService.
-func (a *Alu2gClient) Close() error {
-	a.stop <- true
-	return nil
-}
 
 // Subscribe implements INotificationService.
 func (a *Alu2gClient) Subscribe(chBufferSize uint) async.Stream[domain.AlertCollection] {
@@ -59,7 +54,7 @@ func (a *Alu2gClient) Run() {
 LP1:
 	for {
 		select {
-		case <-a.stop:
+		case <-a.ctx.Done():
 			break LP1
 		default:
 			a.pollAlu2g()
@@ -154,17 +149,17 @@ func (a *Alu2gClient) pollAlu2g() {
 // -----------------------------------------------------------------------------------
 // Constructor
 // -----------------------------------------------------------------------------------
-func NewAlu2gClient(host string, port uint16, logger log.ILogger, interval time.Duration, opts ...func(*Alu2gClient)) INotificationService[domain.AlertCollection] {
+func NewAlu2gClient(ctx context.Context, host string, port uint16, logger log.ILogger, interval time.Duration, opts ...func(*Alu2gClient)) INotificationService[domain.AlertCollection] {
 	// Create default Alu2gClient
 	r := &Alu2gClient{
 		host:     host,
 		port:     port,
 		interval: interval,
 		logger:   logger,
+		ctx:      ctx,
 
 		tcpBufferSize:          1024,
 		tcpTimeout:             time.Duration(30) * time.Second,
-		stop:                   make(chan bool),
 		subscriptions:          map[async.Stream[domain.AlertCollection]]bool{},
 		lastSuccessfullRequest: time.Now(),
 	}
