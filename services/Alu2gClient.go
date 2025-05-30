@@ -2,12 +2,14 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"time"
 
 	"github.com/fireops-software/fireops-edge-alu2g-gateway/domain"
 	"github.com/uoul/go-common/async"
+	"github.com/uoul/go-common/health"
 	"github.com/uoul/go-common/log"
 
 	appError "github.com/fireops-software/fireops-edge-alu2g-gateway/error"
@@ -21,22 +23,17 @@ type Alu2gClient struct {
 	port     uint16
 	interval time.Duration
 	logger   log.ILogger
+	ctx      context.Context
 
-	tcpTimeout    time.Duration
-	tcpBufferSize int
-	stop          chan bool
-	subscriptions map[async.Stream[domain.AlertCollection]]bool
+	tcpTimeout             time.Duration
+	tcpBufferSize          int
+	subscriptions          map[async.Stream[domain.AlertCollection]]bool
+	lastSuccessfullRequest time.Time
 }
 
 //-----------------------------------------------------------------------------------
 // Public
 //-----------------------------------------------------------------------------------
-
-// Close implements INotificationService.
-func (a *Alu2gClient) Close() error {
-	a.stop <- true
-	return nil
-}
 
 // Subscribe implements INotificationService.
 func (a *Alu2gClient) Subscribe(chBufferSize uint) async.Stream[domain.AlertCollection] {
@@ -57,7 +54,7 @@ func (a *Alu2gClient) Run() {
 LP1:
 	for {
 		select {
-		case <-a.stop:
+		case <-a.ctx.Done():
 			break LP1
 		default:
 			a.pollAlu2g()
@@ -131,6 +128,8 @@ func (a *Alu2gClient) pollAlu2g() {
 		)
 		return
 	}
+	// Store successfull request
+	a.lastSuccessfullRequest = time.Now()
 	// Parse data
 	alerts, err := domain.CreateAlertCollection(data)
 	if err != nil {
@@ -150,23 +149,32 @@ func (a *Alu2gClient) pollAlu2g() {
 // -----------------------------------------------------------------------------------
 // Constructor
 // -----------------------------------------------------------------------------------
-func NewAlu2gClient(host string, port uint16, logger log.ILogger, interval time.Duration, opts ...func(*Alu2gClient)) INotificationService[domain.AlertCollection] {
+func NewAlu2gClient(ctx context.Context, host string, port uint16, logger log.ILogger, interval time.Duration, opts ...func(*Alu2gClient)) INotificationService[domain.AlertCollection] {
 	// Create default Alu2gClient
 	r := &Alu2gClient{
 		host:     host,
 		port:     port,
 		interval: interval,
 		logger:   logger,
+		ctx:      ctx,
 
-		tcpBufferSize: 1024,
-		tcpTimeout:    time.Duration(30) * time.Second,
-		stop:          make(chan bool),
-		subscriptions: map[async.Stream[domain.AlertCollection]]bool{},
+		tcpBufferSize:          1024,
+		tcpTimeout:             time.Duration(30) * time.Second,
+		subscriptions:          map[async.Stream[domain.AlertCollection]]bool{},
+		lastSuccessfullRequest: time.Now(),
 	}
 	// Apply options
 	for _, o := range opts {
 		o(r)
 	}
+	// Register readyness check
+	health.GetHealthMonitor().RegisterReadynessCheck("check alu2g connection", func() error {
+		if time.Since(r.lastSuccessfullRequest) > 2*r.interval {
+			return appError.NewErrAlu2g("alu2g connection not ready")
+		}
+		return nil
+	})
+	// Return Alu2gClient
 	return r
 }
 

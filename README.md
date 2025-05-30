@@ -14,14 +14,17 @@ All configuration is done via environmental variables because the intended form 
 | RABBITMQ_PORT | 5672 | RabbitMQ port |
 | RABBITMQ_USER | "" | RabbitMQ user |
 | RABBITMQ_PW | "" | RabbitMQ password |
-| RABBITMQ_EXCHANGE_ACTIVE | ActiveAlerts | RabbitMQ Exchange, where changes will be published |
-| RABBITMQ_EXCHANGE_NEW | NewAlerts | RabbitMQ Exchange, where new alerts will be published |
+| RABBITMQ_EXCHANGE | fireops-edge-alerts | RabbitMQ Exchange, where alerts will be published |
+| RABBITMQ_ROUTING_KEY_ACTIVE | active | RabbitMQ routing key for all changes on currently active alerts |
+| RABBITMQ_ROUTING_KEY_NEW | new | RabbitMQ routing key for new alerts |
+| RABBITMQ_HEALTH_EXCHANGE | fireops-edge-health | RabbitMQ exchange for health messages |
+| RABBITMQ_HEALTH_ROUTING_KEY | "" | RabbitMQ routing key for health messages |
 ||||
 | ALU2G_HOST | 192.168.130.100 | IP or Hostname of Alu2g device |
 | ALU2G_PORT | 47000 | TCP-Port of Alu2g xml interface |
-| ALU2G_POLL_INTERVAL | 10 | Polling interval on xml interface in seconds |
+| ALU2G_POLL_INTERVAL | 15 | Polling interval on xml interface in seconds |
 ||||
-| LOG_LEVEL | INFO | Possible TRACE, DEBUG, INFO, WARNING, ERROR, FATAL, OFF |
+| LOG_LEVEL | INFO | TRACE, DEBUG, INFO, WARNING, ERROR, FATAL, OFF |
 
 ## Dataformat
 The following json is an example of the dataformat, that the service will publish on RabbitMQ

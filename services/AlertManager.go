@@ -2,26 +2,30 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
+	"encoding/json"
 	"hash/crc32"
 
 	"github.com/fireops-software/fireops-edge-alu2g-gateway/domain"
 	"github.com/fireops-software/fireops-edge-alu2g-gateway/pkg/buffer"
+	"github.com/rabbitmq/amqp091-go"
 	"github.com/uoul/go-common/log"
+	"github.com/uoul/go-common/messaging"
 )
 
 // -----------------------------------------------------------------------------------
 // Type
 // -----------------------------------------------------------------------------------
 type AlertManager struct {
-	logger                log.ILogger
-	alertSrc              INotificationService[domain.AlertCollection]
-	activeAlertsPublisher IPublishService[domain.AlertCollection]
-	newAlertsPublisher    IPublishService[domain.AlertCollection]
+	logger               log.ILogger
+	alertSrc             INotificationService[domain.AlertCollection]
+	messenger            messaging.IMessenger[messaging.RabbitMqExchange, amqp091.Delivery]
+	alertSrcBufferSize   uint
+	newAlertsExchange    messaging.RabbitMqExchange
+	activeAlertsExchange messaging.RabbitMqExchange
+	ctx                  context.Context
 
-	alertSrcBufferSize uint
-
-	stop           chan bool
 	alertHistory   *buffer.RingBuffer[domain.AlertId]
 	backupChecksum uint32
 }
@@ -29,12 +33,6 @@ type AlertManager struct {
 //-----------------------------------------------------------------------------------
 // Public
 //-----------------------------------------------------------------------------------
-
-// Close implements IService.
-func (a *AlertManager) Close() error {
-	a.stop <- true
-	return nil
-}
 
 // Run implements IService.
 func (a *AlertManager) Run() {
@@ -46,7 +44,7 @@ func (a *AlertManager) Run() {
 LP1:
 	for {
 		select {
-		case <-a.stop:
+		case <-a.ctx.Done():
 			break LP1
 		case alerts := <-src:
 			if alerts.Error == nil {
@@ -58,7 +56,7 @@ LP1:
 				}
 				if checksum != a.backupChecksum || err != nil {
 					a.backupChecksum = checksum
-					err := a.activeAlertsPublisher.Publish(&alerts.Result)
+					err := a.messenger.Publish(a.activeAlertsExchange, &alerts.Result)
 					if err != nil {
 						a.logger.Errorf(err.Error())
 					}
@@ -66,7 +64,8 @@ LP1:
 				// Check new alerts
 				newAlerts := a.getNewAlerts(alerts.Result)
 				if len(newAlerts.Alerts) > 0 {
-					err := a.newAlertsPublisher.Publish(&newAlerts)
+					a.logger.Infof("new alert: %v", mustJson(newAlerts))
+					err := a.messenger.Publish(a.newAlertsExchange, &newAlerts)
 					if err != nil {
 						a.logger.Errorf(err.Error())
 					}
@@ -101,25 +100,33 @@ func createCrc32[T any](obj T) (uint32, error) {
 	return crc32.ChecksumIEEE(buf.Bytes()), nil
 }
 
+func mustJson(item any) string {
+	data, _ := json.Marshal(item)
+	return string(data)
+}
+
 // -----------------------------------------------------------------------------------
 // Constructor
 // -----------------------------------------------------------------------------------
 func NewAlertManager(
+	ctx context.Context,
 	logger log.ILogger,
 	alertSrc INotificationService[domain.AlertCollection],
-	activeAlertsPublisher IPublishService[domain.AlertCollection],
-	newAlertsPublisher IPublishService[domain.AlertCollection],
+	messenger messaging.IMessenger[messaging.RabbitMqExchange, amqp091.Delivery],
+	activeAlertsExchange messaging.RabbitMqExchange,
+	newAlertsExchange messaging.RabbitMqExchange,
 	opts ...func(*AlertManager),
 ) IService {
 	am := &AlertManager{
-		logger:                logger,
-		alertSrc:              alertSrc,
-		activeAlertsPublisher: activeAlertsPublisher,
-		newAlertsPublisher:    newAlertsPublisher,
+		logger:               logger,
+		alertSrc:             alertSrc,
+		messenger:            messenger,
+		activeAlertsExchange: activeAlertsExchange,
+		newAlertsExchange:    newAlertsExchange,
 
 		alertSrcBufferSize: 10,
 
-		stop:         make(chan bool),
+		ctx:          ctx,
 		alertHistory: buffer.NewRingBuffer[domain.AlertId](50),
 	}
 	for _, o := range opts {
