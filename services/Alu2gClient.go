@@ -27,7 +27,7 @@ type Alu2gClient struct {
 
 	tcpTimeout             time.Duration
 	tcpBufferSize          int
-	subscriptions          map[async.Stream[domain.AlertCollection]]bool
+	subscriptions          map[async.Stream[[]domain.Event]]bool
 	lastSuccessfullRequest time.Time
 }
 
@@ -36,14 +36,14 @@ type Alu2gClient struct {
 //-----------------------------------------------------------------------------------
 
 // Subscribe implements INotificationService.
-func (a *Alu2gClient) Subscribe(chBufferSize uint) async.Stream[domain.AlertCollection] {
-	c := async.NewBufferedStream[domain.AlertCollection](chBufferSize)
+func (a *Alu2gClient) Subscribe(chBufferSize uint) async.Stream[[]domain.Event] {
+	c := async.NewBufferedStream[[]domain.Event](chBufferSize)
 	a.subscriptions[c] = true
 	return c
 }
 
 // Unsubscribe implements INotificationService.
-func (a *Alu2gClient) Unsubscribe(client async.Stream[domain.AlertCollection]) {
+func (a *Alu2gClient) Unsubscribe(client async.Stream[[]domain.Event]) {
 	close(client)
 	delete(a.subscriptions, client)
 }
@@ -75,9 +75,9 @@ func (a *Alu2gClient) getDataFromAlu2g() ([]byte, error) {
 	}
 	defer func() {
 		conn.Close()
-		a.logger.Tracef("closed connection to Alu2g (%s)", addr)
+		a.logger.Debugf("closed connection to Alu2g (%s)", addr)
 	}()
-	a.logger.Tracef("successfully connected to Alu2g (%s)", addr)
+	a.logger.Debugf("successfully connected to Alu2g (%s)", addr)
 
 	// Set timeout
 	err = conn.SetDeadline(time.Now().Add(a.tcpTimeout))
@@ -90,7 +90,7 @@ func (a *Alu2gClient) getDataFromAlu2g() ([]byte, error) {
 	if err != nil {
 		return nil, appError.NewErrAlu2g("failed to write request to Alu2g (%s) - %v", addr, err)
 	}
-	a.logger.Tracef("request for alert data has been sent to Alu2g (%s)", addr)
+	a.logger.Debugf("request for event data has been sent to Alu2g (%s)", addr)
 
 	// Wait for Response
 	data := []byte{}
@@ -106,13 +106,13 @@ func (a *Alu2gClient) getDataFromAlu2g() ([]byte, error) {
 			break
 		}
 	}
-	a.logger.Tracef("received response from Alu2g (%s): %s (%d bytes)", addr, string(data), len(data))
+	a.logger.Debugf("received response from Alu2g (%s): %s (%d bytes)", addr, string(data), len(data))
 
 	// Return result
 	return []byte(data), nil
 }
 
-func (a *Alu2gClient) notify(msg async.ActionResult[domain.AlertCollection]) {
+func (a *Alu2gClient) notify(msg async.ActionResult[[]domain.Event]) {
 	for client := range a.subscriptions {
 		client <- msg
 	}
@@ -124,24 +124,24 @@ func (a *Alu2gClient) pollAlu2g() {
 	if err != nil {
 		a.logger.Error(err.Error())
 		a.notify(
-			async.NewErrorActionResult[domain.AlertCollection](err),
+			async.NewErrorActionResult[[]domain.Event](err),
 		)
 		return
 	}
 	// Store successfull request
 	a.lastSuccessfullRequest = time.Now()
 	// Parse data
-	alerts, err := domain.CreateAlertCollection(data)
+	events, err := domain.CreateEvents(data)
 	if err != nil {
 		a.logger.Error(err.Error())
 		a.notify(
-			async.NewErrorActionResult[domain.AlertCollection](err),
+			async.NewErrorActionResult[[]domain.Event](err),
 		)
 		return
 	}
 	// Notify clients
-	a.notify(async.ActionResult[domain.AlertCollection]{
-		Result: *alerts,
+	a.notify(async.ActionResult[[]domain.Event]{
+		Result: events,
 		Error:  nil,
 	})
 }
@@ -149,7 +149,7 @@ func (a *Alu2gClient) pollAlu2g() {
 // -----------------------------------------------------------------------------------
 // Constructor
 // -----------------------------------------------------------------------------------
-func NewAlu2gClient(ctx context.Context, host string, port uint16, logger log.ILogger, interval time.Duration, opts ...func(*Alu2gClient)) INotificationService[domain.AlertCollection] {
+func NewAlu2gClient(ctx context.Context, host string, port uint16, logger log.ILogger, interval time.Duration, opts ...func(*Alu2gClient)) INotificationService[[]domain.Event] {
 	// Create default Alu2gClient
 	r := &Alu2gClient{
 		host:     host,
@@ -160,7 +160,7 @@ func NewAlu2gClient(ctx context.Context, host string, port uint16, logger log.IL
 
 		tcpBufferSize:          1024,
 		tcpTimeout:             time.Duration(30) * time.Second,
-		subscriptions:          map[async.Stream[domain.AlertCollection]]bool{},
+		subscriptions:          map[async.Stream[[]domain.Event]]bool{},
 		lastSuccessfullRequest: time.Now(),
 	}
 	// Apply options

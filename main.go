@@ -49,9 +49,9 @@ func main() {
 		cp.StringOrDefault("RABBITMQ_PW", ""),
 	)
 
-	// Create AlertManager
-	rabbitmqExchange := cp.StringOrDefault("RABBITMQ_EXCHANGE", "fireops-edge-alerts")
-	alertManager := services.NewAlertManager(
+	// Create EventManager
+	rabbitmqExchange := cp.StringOrDefault("RABBITMQ_EXCHANGE", "fireops-edge-events")
+	eventManager := services.NewEventManager(
 		appCtx,
 		logger,
 		alu2gClient,
@@ -59,12 +59,12 @@ func main() {
 		messaging.RabbitMqExchange{
 			Type:       "topic",
 			Exchange:   rabbitmqExchange,
-			RoutingKey: cp.StringOrDefault("RABBITMQ_ROUTING_KEY_ACTIVE", "active"),
+			RoutingKey: cp.StringOrDefault("RABBITMQ_ROUTING_KEY_ACTIVE", "alu2g.active"),
 		},
 		messaging.RabbitMqExchange{
 			Type:       "topic",
 			Exchange:   rabbitmqExchange,
-			RoutingKey: cp.StringOrDefault("RABBITMQ_ROUTING_KEY_NEW", "new"),
+			RoutingKey: cp.StringOrDefault("RABBITMQ_ROUTING_KEY_NEW", "alu2g.new"),
 		},
 	)
 
@@ -83,7 +83,7 @@ func main() {
 
 	// Run services
 	go alu2gClient.Run()
-	go alertManager.Run()
+	go eventManager.Run()
 	go healthReporter.Run()
 
 	// Wait until stop

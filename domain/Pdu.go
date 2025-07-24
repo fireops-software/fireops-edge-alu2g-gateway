@@ -78,37 +78,54 @@ func createPduFromBytes(data []byte) (*Pdu, error) {
 	return pdu, err
 }
 
-func CreateAlertCollection(data []byte) (*AlertCollection, error) {
+func CreateEvents(data []byte) ([]Event, error) {
 	pdu, err := createPduFromBytes(data)
 	if err != nil {
 		return nil, appError.NewErrInvalidData("failed to parse data to pdu - %v", err)
 	}
-	ac := &AlertCollection{
-		Alerts: map[AlertId]Alert{},
-	}
+	events := []Event{}
 	for _, order := range pdu.OrderList.Order {
-		ac.Alerts[AlertId(order.OperationId)] = Alert{
-			Origin: Origin{
-				Tid:  order.Origin.Tid,
-				Name: order.Origin.Name,
-			},
-			ReceiveTad:    order.ReceiveTad,
-			OperationName: order.OperationName,
-			Program:       order.Program,
-			Level:         order.Level,
-			Contact: Contact{
-				Name:        order.Name,
-				PhoneNumber: order.Caller,
-			},
-			Location:     order.Location,
-			Info:         order.Info,
-			Destinations: make(map[uint]string),
+		dests := []struct {
+			Id   uint   "json:\"id\""
+			Name string "json:\"name\""
+		}{}
+		for _, d := range order.DestinationList.Destination {
+			dests = append(dests, struct {
+				Id   uint   "json:\"id\""
+				Name string "json:\"name\""
+			}{
+				Id:   d.Id,
+				Name: d.Name,
+			})
 		}
-		for _, destination := range order.DestinationList.Destination {
-			ac.Alerts[AlertId(order.OperationId)].Destinations[destination.Id] = destination.Name
-		}
+		events = append(events, Event{
+			Eid:               nil,
+			Num1:              &order.OperationId,
+			Location:          &order.Location,
+			LocationInfo:      nil,
+			LocationInvolved:  nil,
+			Category:          &order.Program,
+			TypEng:            &order.OperationName,
+			SubEng:            nil,
+			AlarmLev:          &order.Level,
+			EventAlarmtext:    &order.Info,
+			CreateTime:        &order.ReceiveTad,
+			FirstdispatchTime: nil,
+			Latitude:          nil,
+			Longitude:         nil,
+			CallerName:        &order.Name,
+			CallerNumber:      &order.Caller,
+			Destinations:      dests,
+			UserResponses: struct {
+				Accepted []string "json:\"accepted\""
+				Declined []string "json:\"declined\""
+			}{
+				Accepted: []string{},
+				Declined: []string{},
+			},
+		})
 	}
-	return ac, nil
+	return events, nil
 }
 
 // ---------------------------------------------------
