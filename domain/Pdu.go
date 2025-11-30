@@ -78,6 +78,10 @@ func createPduFromBytes(data []byte) (*Pdu, error) {
 	return pdu, err
 }
 
+func ptr[T any](value T) *T {
+	return &value
+}
+
 func CreateEvents(data []byte) ([]Event, error) {
 	pdu, err := createPduFromBytes(data)
 	if err != nil {
@@ -123,6 +127,7 @@ func CreateEvents(data []byte) ([]Event, error) {
 				Accepted: []string{},
 				Declined: []string{},
 			},
+			FullChain: ptr(true),
 		})
 	}
 	return events, nil

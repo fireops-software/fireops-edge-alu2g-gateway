@@ -25,4 +25,5 @@ type Event struct {
 		Accepted []string `json:"accepted"`
 		Declined []string `json:"declined"`
 	} `json:"user_responses"`
+	FullChain *bool `json:"fullChain"`
 }
