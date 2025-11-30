@@ -18,6 +18,7 @@ type HealthReporter struct {
 	healthExchange messaging.RabbitMqExchange
 	reportInterval time.Duration
 	serviceName    string
+	displayName    string
 	ctx            context.Context
 }
 
@@ -39,6 +40,7 @@ LP1:
 			}
 			currentState := &domain.Health{
 				ServiceName: h.serviceName,
+				DisplayName: h.displayName,
 				Timestamp:   time.Now(),
 				State:       s,
 				Errors:      collections.MapSlice(e, func(e error) string { return e.Error() }),
@@ -59,13 +61,14 @@ func WithHealthReporterInterval(interval time.Duration) func(*HealthReporter) {
 	}
 }
 
-func NewHealthReporter(ctx context.Context, logger log.ILogger, messenger messaging.IMessenger[messaging.RabbitMqExchange, amqp091.Delivery], healthExchange messaging.RabbitMqExchange, serviceName string, opts ...func(*HealthReporter)) IService {
+func NewHealthReporter(ctx context.Context, logger log.ILogger, messenger messaging.IMessenger[messaging.RabbitMqExchange, amqp091.Delivery], healthExchange messaging.RabbitMqExchange, serviceName string, displayName string, opts ...func(*HealthReporter)) IService {
 	hr := &HealthReporter{
 		logger:         logger,
 		messenger:      messenger,
 		healthExchange: healthExchange,
 		reportInterval: 30 * time.Second,
 		serviceName:    serviceName,
+		displayName:    displayName,
 		ctx:            ctx,
 	}
 	for _, o := range opts {

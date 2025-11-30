@@ -68,7 +68,7 @@ LP1:
 // -----------------------------------------------------------------------------------
 func (a *Alu2gClient) getDataFromAlu2g() ([]byte, error) {
 	// Connect to Alu2g
-	addr := fmt.Sprintf("%s:%d", a.host, a.port)
+	addr := net.JoinHostPort(a.host, fmt.Sprintf("%d", a.port))
 	conn, err := net.DialTimeout("tcp", addr, a.tcpTimeout)
 	if err != nil {
 		return nil, appError.NewErrTcpConnect("failed to connect to alu2g (%s) - %v", addr, err)

@@ -16,6 +16,7 @@ import (
 const (
 	VERSION      = "{VERSION}"
 	SERVICE_NAME = "fireops-edge-alu2g-gateway"
+	DISPLAY_NAME = "WAS"
 )
 
 func main() {
@@ -50,7 +51,7 @@ func main() {
 	)
 
 	// Create EventManager
-	rabbitmqExchange := cp.StringOrDefault("RABBITMQ_EXCHANGE", "fireops-edge-events")
+	rabbitmqExchange := cp.StringOrDefault("RABBITMQ_EVENTS_EXCHANGE", "fireops-edge-events")
 	eventManager := services.NewEventManager(
 		appCtx,
 		logger,
@@ -59,12 +60,7 @@ func main() {
 		messaging.RabbitMqExchange{
 			Type:       "topic",
 			Exchange:   rabbitmqExchange,
-			RoutingKey: cp.StringOrDefault("RABBITMQ_ROUTING_KEY_ACTIVE", "alu2g.active"),
-		},
-		messaging.RabbitMqExchange{
-			Type:       "topic",
-			Exchange:   rabbitmqExchange,
-			RoutingKey: cp.StringOrDefault("RABBITMQ_ROUTING_KEY_NEW", "alu2g.new"),
+			RoutingKey: cp.StringOrDefault("RABBITMQ_EVENTS_ROUTING_KEY", "alu2g"),
 		},
 	)
 
@@ -79,6 +75,7 @@ func main() {
 			RoutingKey: cp.StringOrDefault("RABBITMQ_HEALTH_ROUTING_KEY", ""),
 		},
 		SERVICE_NAME,
+		DISPLAY_NAME,
 	)
 
 	// Run services

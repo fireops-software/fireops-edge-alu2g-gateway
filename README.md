@@ -14,9 +14,8 @@ All configuration is done via environmental variables because the intended form 
 | RABBITMQ_PORT | 5672 | RabbitMQ port |
 | RABBITMQ_USER | "" | RabbitMQ user |
 | RABBITMQ_PW | "" | RabbitMQ password |
-| RABBITMQ_EXCHANGE | fireops-edge-events | RabbitMQ Exchange, where events will be published |
-| RABBITMQ_ROUTING_KEY_ACTIVE | alu2g.active | RabbitMQ routing key for active events |
-| RABBITMQ_ROUTING_KEY_NEW | alu2g.new | RabbitMQ routing key for new events |
+| RABBITMQ_EVENTS_EXCHANGE | fireops-edge-events | RabbitMQ Exchange, where events will be published |
+| RABBITMQ_EVENTS_ROUTING_KEY | alu2g | RabbitMQ routing key for events from alu2g |
 | RABBITMQ_HEALTH_EXCHANGE | fireops-edge-health | RabbitMQ exchange for health messages |
 | RABBITMQ_HEALTH_ROUTING_KEY | "" | RabbitMQ routing key for health messages |
 ||||

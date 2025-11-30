@@ -15,13 +15,12 @@ import (
 // Type
 // -----------------------------------------------------------------------------------
 type EventManager struct {
-	logger               log.ILogger
-	eventSrc             INotificationService[[]domain.Event]
-	messenger            messaging.IMessenger[messaging.RabbitMqExchange, amqp091.Delivery]
-	eventSrcBufferSize   uint
-	newEventsExchange    messaging.RabbitMqExchange
-	activeEventsExchange messaging.RabbitMqExchange
-	ctx                  context.Context
+	logger             log.ILogger
+	eventSrc           INotificationService[[]domain.Event]
+	messenger          messaging.IMessenger[messaging.RabbitMqExchange, amqp091.Delivery]
+	eventSrcBufferSize uint
+	eventsExchange     messaging.RabbitMqExchange
+	ctx                context.Context
 
 	eventHistory *buffer.RingBuffer[string]
 }
@@ -46,18 +45,14 @@ LP1:
 			if events.Error == nil {
 				a.logger.Debugf("incomming data on EventManager: %v", events.Result)
 				// Publish active events
-				err := a.messenger.Publish(a.activeEventsExchange, &events.Result)
+				err := a.messenger.Publish(a.eventsExchange, &events.Result)
 				if err != nil {
 					a.logger.Errorf(err.Error())
 				}
-				// Check new events
+				// Check new events (print to console)
 				newEvents := a.getNewEvents(events.Result)
 				if len(newEvents) > 0 {
 					a.logger.Infof("new event: %v", mustJson(newEvents))
-					err := a.messenger.Publish(a.newEventsExchange, &newEvents)
-					if err != nil {
-						a.logger.Errorf(err.Error())
-					}
 				}
 			}
 		}
@@ -91,16 +86,14 @@ func NewEventManager(
 	logger log.ILogger,
 	eventSrc INotificationService[[]domain.Event],
 	messenger messaging.IMessenger[messaging.RabbitMqExchange, amqp091.Delivery],
-	activeEventsExchange messaging.RabbitMqExchange,
-	newEventsExchange messaging.RabbitMqExchange,
+	eventsExcahnge messaging.RabbitMqExchange,
 	opts ...func(*EventManager),
 ) IService {
 	am := &EventManager{
-		logger:               logger,
-		eventSrc:             eventSrc,
-		messenger:            messenger,
-		activeEventsExchange: activeEventsExchange,
-		newEventsExchange:    newEventsExchange,
+		logger:         logger,
+		eventSrc:       eventSrc,
+		messenger:      messenger,
+		eventsExchange: eventsExcahnge,
 
 		eventSrcBufferSize: 10,
 
