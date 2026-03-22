@@ -127,7 +127,8 @@ func CreateEvents(data []byte) ([]Event, error) {
 				Accepted: []string{},
 				Declined: []string{},
 			},
-			FullChain: ptr(true),
+			AlertState: &order.Status,
+			FullChain:  ptr(true),
 		})
 	}
 	return events, nil
