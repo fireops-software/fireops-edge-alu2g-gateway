@@ -121,9 +121,10 @@ func CreateEvents(data []byte) ([]Event, error) {
 			CallerNumber:      &order.Caller,
 			Destinations:      dests,
 			AlertedUnits: []struct {
-				UnidLong string "json:\"unid_long\""
-				SName    string "json:\"s_name\""
-				UniTyp   string "json:\"unityp\""
+				UnidLong *string "json:\"unid_long\""
+				SName    *string "json:\"s_name\""
+				UniTyp   *string "json:\"unityp\""
+				Priority *int    "json:\"priority\""
 			}{},
 			UserResponses: struct {
 				Accepted []string "json:\"accepted\""
